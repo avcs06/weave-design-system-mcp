@@ -1,0 +1,49 @@
+{
+  "name": "@avcs/weave-design-system",
+  "version": "0.1.0",
+  "description": "MCP server exposing the Weave design system (tokens and components) to AI tools.",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "bin": {
+    "weave-design-system": "./dist/stdio.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "dev": "tsx watch src/stdio.ts",
+    "start": "node dist/stdio.js",
+    "start:http": "node dist/http.js",
+    "dev:http": "tsx watch src/http.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write \"src/**/*.ts\" \"*.{json,md}\"",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@cfworker/json-schema": "^4.1.1",
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "zod": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.23.13",
+    "typescript": "~5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
