@@ -364,12 +364,6 @@ describe('validate — story-derived patterns (superseded implementation)', () =
     expect(result.findings.map((f) => f.rule)).not.toContain('deprecated-pattern');
   });
 
-  it('warns about a prop combination no story demonstrates', () => {
-    const result = system.validate('<Button size="lg" />');
-    expect(result.findings.map((f) => f.rule)).toContain('undocumented-pattern');
-    expect(result.ok).toBe(true);
-  });
-
   it('stays quiet for a usage matching a documented shape', () => {
     expect(system.validate('<Button variant="primary" size="lg" />')).toEqual({
       ok: true,

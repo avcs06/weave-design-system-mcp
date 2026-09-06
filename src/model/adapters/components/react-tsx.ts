@@ -97,7 +97,6 @@ function toContract(doc: ComponentDoc, filePath: string): ComponentContract {
     variantProps: props.filter((p) => p.allowedValues).map((p) => p.name),
     invalidAlternatives: declaredInvalidAlternatives(doc),
     deprecatedPatterns: stories.deprecatedPatterns,
-    storyPropShapes: stories.storyPropShapes,
     filePath,
   };
 }

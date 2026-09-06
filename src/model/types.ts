@@ -74,13 +74,6 @@ export interface ComponentContract {
   invalidAlternatives: string[];
   /** Deprecated prop combinations read from the component's colocated `.stories` file. */
   deprecatedPatterns: DeprecatedUsagePattern[];
-  /**
-   * The prop-*name* set each story demonstrates (values ignored, sorted).
-   * Empty when the component has no stories at all — which means "can't
-   * tell", not "nothing is documented", so the undocumented-pattern check
-   * skips the component entirely rather than warning about everything.
-   */
-  storyPropShapes: string[][];
   /** Absolute path of the file declaring the component, when it came from one. */
   filePath?: string;
 }

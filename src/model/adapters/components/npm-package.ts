@@ -77,7 +77,6 @@ function toContract(doc: ComponentDoc, packageName: string): ComponentContract {
       .map((p) => p.name),
     invalidAlternatives: [],
     deprecatedPatterns: [],
-    storyPropShapes: [],
   };
 }
 
@@ -154,7 +153,6 @@ export function loadComponents(config: SourceConfig): ComponentContract[] {
             variantProps: [],
             invalidAlternatives: [],
             deprecatedPatterns: [],
-            storyPropShapes: [],
           });
         } else {
           console.error(

@@ -58,17 +58,15 @@ function position(node: { loc?: JSXOpeningElement['loc'] }): { line: number; col
   return { line: node.loc ? node.loc.start.line : 0, column: node.loc ? node.loc.start.column + 1 : 0 };
 }
 
-/** Every prop name written on an element, plus the literal values among them. */
-function readAttributes(node: JSXOpeningElement): { names: string[]; literals: Map<string, string> } {
-  const names: string[] = [];
+/** The literal values among an element's props, keyed by prop name. */
+function readAttributes(node: JSXOpeningElement): Map<string, string> {
   const literals = new Map<string, string>();
   for (const attr of node.attributes) {
     if (attr.type !== 'JSXAttribute' || attr.name.type !== 'JSXIdentifier') continue;
-    names.push(attr.name.name);
     const value = literalAttrValue(attr);
     if (value !== undefined) literals.set(attr.name.name, value);
   }
-  return { names, literals };
+  return literals;
 }
 
 /**
@@ -109,23 +107,14 @@ function matchesPattern(pattern: Record<string, string>, literals: Map<string, s
 }
 
 /**
- * Two checks against what the component's own `.stories` file documents:
- *
- *  - a usage reproducing a prop combination a story marks `@deprecated` is
- *    the "duplicate/superseded implementation" case — a warning naming the
- *    story, so the reader can go see what replaced it;
- *  - a usage whose prop-name set matches no documented story at all is a
- *    softer warning still. It only fires when the component has stories to
- *    compare against: with none, the answer is "can't tell", and inventing
- *    a warning from no evidence would make the tool noise.
- *
- * Neither is an error — both describe a usage that works but diverges from
- * how the system documents itself.
+ * A usage reproducing a prop combination a story marks `@deprecated` is the
+ * "duplicate/superseded implementation" case — a warning naming the story,
+ * so the reader can go see what replaced it. Not an error: the usage works,
+ * it just diverges from how the system documents itself.
  */
-function checkAgainstStories(
+function checkDeprecatedPattern(
   node: JSXOpeningElement,
   component: ComponentContract,
-  propNames: string[],
   literals: Map<string, string>,
 ): Finding[] {
   const findings: Finding[] = [];
@@ -142,22 +131,6 @@ function checkAgainstStories(
       ...position(node),
       message: `This ${component.name} usage matches ${shape}, which "${pattern.storyName}" in ${component.name}'s stories marks as deprecated.`,
     });
-  }
-
-  if (component.storyPropShapes.length > 0 && propNames.length > 0) {
-    const used = new Set(propNames);
-    const documented = component.storyPropShapes.some((shape) => shape.every((prop) => used.has(prop)));
-    if (!documented) {
-      findings.push({
-        rule: 'undocumented-pattern',
-        severity: 'warning',
-        surface: 'jsx',
-        ...position(node),
-        message:
-          `This ${component.name} usage (${propNames.join(', ')}) does not match any prop combination ` +
-          `${component.name}'s stories demonstrate. It may still be correct — check the stories before relying on it.`,
-      });
-    }
   }
 
   return findings;
@@ -365,9 +338,9 @@ export function validateJsx(
 
         const component = system.component(tag);
         if (component) {
-          const { names, literals } = readAttributes(node);
+          const literals = readAttributes(node);
           findings.push(...checkVariantProps(node, component));
-          findings.push(...checkAgainstStories(node, component, names, literals));
+          findings.push(...checkDeprecatedPattern(node, component, literals));
         }
       }
 

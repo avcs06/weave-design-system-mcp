@@ -8,11 +8,9 @@ import type { DeprecatedUsagePattern } from '../../types.js';
 
 export interface StoryData {
   deprecatedPatterns: DeprecatedUsagePattern[];
-  /** Every story's prop-*name* set, sorted, deprecation status irrelevant. */
-  storyPropShapes: string[][];
 }
 
-const EMPTY: StoryData = { deprecatedPatterns: [], storyPropShapes: [] };
+const EMPTY: StoryData = { deprecatedPatterns: [] };
 
 function findStoriesFile(componentFilePath: string): string | undefined {
   const base = basename(componentFilePath).replace(/\.[jt]sx?$/, '');
@@ -55,9 +53,9 @@ function propsFromObject(obj: ObjectExpression): Record<string, string> {
 
 /**
  * Reads the first `<ComponentName ... />` inside a story body. A non-literal
- * attribute (`onClick={fn}`) still counts as *present* — recorded as `'true'`
- * — because the undocumented-pattern check compares prop *names*, and
- * dropping it would make a documented shape look narrower than it is.
+ * attribute (`onClick={fn}`) still counts as *present* — recorded as
+ * `'true'` — so it isn't silently dropped from the props a deprecated
+ * pattern is matched against.
  */
 function propsFromJsx(root: Node, componentName: string): Record<string, string>[] {
   // A plain recursive walk rather than `traverse`: this runs on a bare
@@ -135,9 +133,8 @@ function propsOfStory(init: Expression, componentName: string): Record<string, s
 
 /**
  * Best-effort: reads a component's colocated `.stories` file (same directory,
- * same base name) for two things — prop combinations it explicitly marks
- * deprecated (story named `*Deprecated*`, or carrying an `@deprecated`
- * JSDoc tag), and the prop-name shape of *every* story.
+ * same base name) for prop combinations it explicitly marks deprecated
+ * (story named `*Deprecated*`, or carrying an `@deprecated` JSDoc tag).
  *
  * Returns empty data rather than throwing when there is no stories file or
  * it cannot be parsed. Callers must read that as "can't compare" and skip
@@ -158,7 +155,6 @@ export function scanStories(componentFilePath: string, componentName: string): S
   }
 
   const deprecatedPatterns: DeprecatedUsagePattern[] = [];
-  const storyPropShapes: string[][] = [];
 
   for (const statement of ast.program.body) {
     if (statement.type !== 'ExportNamedDeclaration') continue;
@@ -173,14 +169,14 @@ export function scanStories(componentFilePath: string, componentName: string): S
       const storyName = declarator.id.name;
 
       const deprecated = deprecatedByDoc || /deprecated/i.test(storyName);
+      if (!deprecated) continue;
 
       for (const props of propsOfStory(declarator.init, componentName)) {
         if (Object.keys(props).length === 0) continue;
-        storyPropShapes.push(Object.keys(props).sort());
-        if (deprecated) deprecatedPatterns.push({ storyName, props });
+        deprecatedPatterns.push({ storyName, props });
       }
     }
   }
 
-  return { deprecatedPatterns, storyPropShapes };
+  return { deprecatedPatterns };
 }

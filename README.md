@@ -210,9 +210,6 @@ can apply in one pass.
 5. **A deprecated usage pattern** — a usage reproducing a prop combination the component's own
    `.stories` file marks deprecated, either by an `@deprecated` docblock or a story name saying so.
    The finding names the story, so the reader can go see what replaced it. A warning, not an error.
-6. **An undocumented usage pattern** — a prop combination no story demonstrates. This fires only
-   for components that _have_ stories: with none, the honest answer is "can't tell", and a warning
-   built from no evidence is just noise. A warning, and a soft one.
 
 ## Worked example: before / after
 
@@ -307,7 +304,7 @@ src/
       components/
         react-tsx.ts            component contracts from project source files
         npm-package.ts          component contracts from an installed package's type declarations
-        stories.ts              deprecated and documented prop shapes from a colocated .stories file
+        stories.ts              deprecated prop patterns from a colocated .stories file
   mcp/
     server.ts                  tool registration
     stdio.ts                   entrypoint: loadConfig(workspace) -> createDesignSystem -> serveStdio
