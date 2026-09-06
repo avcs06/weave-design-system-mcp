@@ -1,9 +1,10 @@
 {
   "compilerOptions": {
+    "types": ["node"],
+    "moduleResolution": "NodeNext",
     "target": "ES2022",
     "lib": ["ES2023"],
     "module": "NodeNext",
-    "moduleResolution": "NodeNext",
     "outDir": "./dist",
     "rootDir": "./src",
     "declaration": true,
@@ -19,5 +20,5 @@
     "forceConsistentCasingInFileNames": true
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/**/*.test.ts", "dist", "node_modules"]
+  "exclude": ["src/**/*.test.ts", "src/**/__fixtures__/**", "dist", "node_modules"]
 }

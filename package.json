@@ -1,14 +1,32 @@
 {
-  "name": "@avcs/weave-design-system",
+  "name": "@avcs/weave-design-system-mcp",
   "version": "0.1.0",
-  "description": "MCP server exposing the Weave design system (tokens and components) to AI tools.",
+  "description": "Generic MCP server that makes any design system (tokens + components) queryable by coding agents, and agent-generated UI checkable against it.",
   "license": "MIT",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "design-system",
+    "design-tokens",
+    "vanilla-extract",
+    "tailwind",
+    "storybook",
+    "ai-agents"
+  ],
+  "homepage": "https://github.com/avcs06/weave-design-system-mcp#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/avcs06/weave-design-system-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/avcs06/weave-design-system-mcp/issues"
+  },
   "type": "module",
   "engines": {
-    "node": ">=18"
+    "node": "^22.18.0 || >=24.11.0"
   },
   "bin": {
-    "weave-design-system": "./dist/stdio.js"
+    "weave-design-system-mcp": "./dist/mcp/stdio.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,30 +38,37 @@
   },
   "files": [
     "dist",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
-    "dev": "tsx watch src/stdio.ts",
-    "start": "node dist/stdio.js",
-    "start:http": "node dist/http.js",
-    "dev:http": "tsx watch src/http.ts",
+    "dev": "tsx watch src/mcp/stdio.ts",
+    "start": "node dist/mcp/stdio.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
     "format": "prettier --write \"src/**/*.ts\" \"*.{json,md}\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.{json,md}\"",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@cfworker/json-schema": "^4.1.1",
-    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@babel/parser": "^8.0.4",
+    "@babel/traverse": "^8.0.4",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "react-docgen-typescript": "^2.4.0",
+    "typescript": "~5.9.3",
     "zod": "^4.5.4"
   },
   "devDependencies": {
-    "@types/node": "^24.0.0",
+    "@types/node": "^24.13.3",
+    "@types/react": "^19.2.18",
     "prettier": "^3.4.2",
+    "react": "^19.2.8",
     "tsx": "^4.23.13",
-    "typescript": "~5.9.3",
     "vitest": "^3.2.4"
   }
 }

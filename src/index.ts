@@ -1,18 +1,17 @@
-export { createServer, SERVER_NAME, SERVER_VERSION } from './server.js';
-export {
-  componentCategories,
-  componentsUsingToken,
-  getComponent,
-  getToken,
-  listComponents,
-  listTokens,
-  search,
-  tokenCategories,
-} from './design-system.js';
+export { createServer, SERVER_NAME, SERVER_VERSION } from './mcp/server.js';
+export { createDesignSystem } from './model/design-system.js';
+export { loadConfig } from './model/config.js';
+export type { ResolvedConfig, SourceConfig } from './model/config.js';
 export type {
-  Component,
+  ComponentContract,
   ComponentProp,
+  ComponentSummary,
+  DeprecatedUsagePattern,
+  DesignSystem,
   DesignToken,
+  Finding,
   SearchHit,
-  TokenCategory,
-} from './types.js';
+  Severity,
+  Surface,
+  ValidateResult,
+} from './model/types.js';

@@ -1,0 +1,48 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Both floors named in package.json's `engines`. Babel 8 sets the
+        # lower one, so a regression that only breaks Node 22 has to fail here.
+        node: ['22', '24']
+
+    name: verify (node ${{ matrix.node }})
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - run: npm ci
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      # The published entrypoint is a binary the client spawns, so "it compiled"
+      # is not enough — start it against the example design system and confirm
+      # it actually loads one.
+      - name: Smoke-test the built server
+        run: |
+          node dist/mcp/stdio.js examples/synthetic-design-system < /dev/null 2>&1 \
+            | tee /dev/stderr | grep -q 'ready on stdio'

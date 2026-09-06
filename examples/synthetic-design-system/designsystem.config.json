@@ -1,0 +1,26 @@
+{
+  "tokens": [
+    {
+      "source": "vanilla-extract",
+      "path": "theme.css.ts"
+    },
+    {
+      "source": "object",
+      "path": "tokens.ts"
+    }
+  ],
+  "components": [
+    {
+      "source": "react-tsx",
+      "include": [
+        "components/**/*.tsx"
+      ]
+    }
+  ],
+  "styles": {
+    "source": "vanilla-extract"
+  },
+  "classNames": {
+    "source": "tailwind"
+  }
+}
