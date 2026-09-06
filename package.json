@@ -1,6 +1,6 @@
 {
   "name": "@avcs/weave-design-system-mcp",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Generic MCP server that makes any design system (tokens + components) queryable by coding agents, and agent-generated UI checkable against it.",
   "license": "MIT",
   "keywords": [
