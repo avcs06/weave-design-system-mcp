@@ -13,6 +13,233 @@ it at.
 Your workspace — the codebase holding the design system — keeps its own
 `designsystem.config.json`, and you point the server at that folder when you register it.
 
+## Worked example: before / after
+
+This runs against the public example design system bundled in `examples/`, so you can see it work
+before setting up your own.
+
+[`examples/synthetic-design-system/`](examples/synthetic-design-system/) is a small, fully public
+design system (fictional tokens, one `Button` with stories) demonstrating the CSS-in-TS + utility
+class split this MCP was built around — run it from inside there (`cd
+examples/synthetic-design-system && node ../../dist/mcp/stdio.js`) to try this yourself.
+
+An agent about to write `Button.css.ts` hardcodes a color instead of looking it up:
+
+```ts
+// before — an agent invented a hex value
+import { style } from '@vanilla-extract/css';
+export const bad = style({ color: '#3b5bdb' });
+```
+
+```jsonc
+// validate({ "code": "..." }) response
+{
+  "ok": false,
+  "findings": [
+    {
+      "rule": "hardcoded-literal",
+      "severity": "error",
+      "surface": "vanilla-extract",
+      "line": 2,
+      "column": 35,
+      "message": "\"color: #3b5bdb\" hardcodes a color value instead of using a design token. The closest token is \"color.accent\".",
+      "suggestion": "vars.color.accent",
+    },
+  ],
+}
+```
+
+The agent applies the suggestion directly:
+
+```ts
+// after
+import { style } from '@vanilla-extract/css';
+import { vars } from '../theme.css';
+export const good = style({ color: vars.color.accent });
+```
+
+```jsonc
+// validate(...) response
+{ "ok": true, "findings": [] }
+```
+
+## Tools
+
+| Tool                | Purpose                                                                                                                                                                                  |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `list_tokens`       | List tokens, optionally filtered to one group. Call with no group first — group names vary by project (`color`, `spacing`, `iconSize`, `zIndex`, whatever the source defines).           |
+| `list_components`   | The component inventory: name, description, category, and which props are variant-like.                                                                                                  |
+| `search_tokens`     | Ranked token search across names, groups, references and values — for when you know what you want but not what this system calls it.                                                     |
+| `search_components` | Ranked component search across names, descriptions, categories and prop names — the first call to make before building any UI element from scratch.                                      |
+| `get_component`     | One component's full contract: every prop with its type and required flag, and the allowed value set for each variant-like prop. An unknown name comes back with the closest real names. |
+| `validate`          | Check a JSX/TSX snippet or a style file's content. Unparseable input comes back as a finding.                                                                                            |
+
+### What `validate` checks
+
+Each finding names the exact constraint broken and, where derivable, the exact fix.
+
+**Values that should be tokens**
+
+1. **Hardcoded literals in style-defining code** — for `vanilla-extract`, that's `style()` and
+   `styleVariants()` (from `@vanilla-extract/css`) and `recipe()` (from the separate
+   `@vanilla-extract/recipes` package), including everything nested inside `selectors`,
+   media-query and variant objects, quoted pseudo-selector keys included. In a system that splits
+   styling between a CSS-in-TS library and utility classes, this is where most real token
+   violations live.
+2. **Hardcoded literals in JSX** — an inline `style={{...}}` prop, and utility-class arbitrary
+   values (`text-[#1e1e22]`, `p-[13px]` under `tailwind`), which step outside the design system's
+   scale by construction.
+
+The `suggestion` on these comes from a value-to-token reverse index built at load time: nearest
+color for a hex value, nearest numeric token for spacing, radius and the like — the fix an agent
+can apply in one pass.
+
+**Wrong implementations**
+
+3. **Unknown variant value** — a variant-like prop set to a value outside its allowed set, with
+   the allowed set named in the message.
+4. **An invalid alternative to a design system component** — reaching for a raw `<button>`, or for
+   some other library's `MuiButton`, when the system has a `Button` of its own. A component
+   declares what it supersedes with an `@invalidAlternative` JSDoc tag, naming native elements and
+   components alike:
+
+   ```tsx
+   /**
+    * Primary interactive control for triggering an action.
+    * @invalidAlternative button, MuiButton
+    */
+   export function Button(props: ButtonProps) {
+     /* ... */
+   }
+   ```
+
+   Declarations use CSS selector syntax, so a component can name a tag _and the classes on it_ —
+   which is how a layout primitive says "a plain div is fine, a div doing my job is not":
+
+   | Declaration      | Matches                             |
+   | ---------------- | ----------------------------------- |
+   | `button`         | any `<button>`                      |
+   | `MuiButton`      | another library's component         |
+   | `div.flex`       | a `<div>` carrying the class `flex` |
+   | `div.flex.gap-2` | a `<div>` carrying both classes     |
+   | `.flex`          | any element carrying `flex`         |
+
+   All the classes named must be present; extras are ignored, so `div.flex` matches
+   `className="flex items-center"`. The classes are plain literals you wrote — this is unrelated
+   to `classNames`, and works whether or not you configure a utility-class convention.
+
+   Any way of writing the value is read, including through a helper — `cn`, `clsx`, `classNames`,
+   `twMerge` or your own, since the name of the call is never inspected:
+
+   ```tsx
+   <div className="flex items-center" />
+   <div className={cn('flex', isActive && 'gap-2')} />
+   <div className={clsx({ flex: isRow })} />   // class as key
+   <div className={`flex ${extra}`} />
+   ```
+
+   Where two declarations both match, the more specific one wins, so `div.flex` is reported over
+   a bare `div`. An invalid alternative is always an error.
+
+**Superseded implementations**
+
+5. **A deprecated usage pattern** — a usage reproducing a prop combination the component's own
+   `.stories` file marks deprecated, either by an `@deprecated` docblock or a story name saying so.
+   The finding names the story, so the reader can go see what replaced it. A warning, not an error.
+
+## Architecture
+
+The design system model has no MCP dependency — everything under [`src/model/`](src/model/)
+(config loading, adapters, `validate`) is plain TypeScript that knows nothing about the protocol;
+[`src/mcp/`](src/mcp/) is a thin layer that registers tools, calls the model, and formats the
+result. That split is deliberate: the model is meant to be reusable by something other than an MCP
+server later (a CLI, a lint rule), and a tool handler containing logic beyond formatting would be
+a bug rather than a feature.
+
+Exactly three adapters — `tsx-adapter`, `styles-adapter`, `classname-adapter` — one per concern.
+All three are dispatchers: they contain no library-specific code of their own, only routing to
+whichever implementation `config.source` names, so no particular styling system or component
+format is baked into the thing that's supposed to be generic.
+
+```
+src/
+  model/
+    types.ts                  DesignSystem, ComponentContract, DesignToken, Finding
+    config.ts                 Zod schema + loadConfig(cwd) -> ResolvedConfig
+    design-system.ts          createDesignSystem(config) -> DesignSystem: loads every configured
+                               token and component source, builds the reverse index, and holds
+                               the lookup/search API
+    validate.ts               parses once with Babel, calls the two "validate" entry points below
+    reverse-index.ts          value -> nearest-token lookup (color distance / numeric proximity)
+    flatten-object-literal.ts shared AST helper both token-reading implementations use
+    check-style-object.ts     shared property-group check every styling implementation, and the
+                               TSX adapter's inline style prop, run an object literal through
+    class-name-strings.ts     reads the classes off a JSX className, whatever expression shape
+                               it takes — knows no className convention
+    adapters/
+      styles-adapter.ts        DISPATCHER — loadTokens(config) and validateStyles(ast, system,
+                                config) each pick a branch on config.source and call into it
+      styles/
+        vanilla-extract.ts      loadTokens() (createThemeContract/createGlobalTheme) and
+                                validate() (style()/styleVariants()/recipe() calls)
+        object.ts               loadTokens() for a plain JS/JSON file
+      classname-adapter.ts      DISPATCHER — check(config, value) picks a branch on config.source
+      classnames/
+        tailwind.ts             check() for arbitrary-value brackets
+      tsx-adapter.ts            DISPATCHER for loadComponents(config), plus validateJsx(ast,
+                                system, classNamesConfig): walks JSX elements, checks variant
+                                props, invalid alternatives and story-derived patterns itself, and
+                                delegates style/className checks to its two sibling adapters
+      components/
+        react-tsx.ts            component contracts from project source files
+        npm-package.ts          component contracts from an installed package's type declarations
+        stories.ts              deprecated prop patterns from a colocated .stories file
+  mcp/
+    server.ts                  tool registration
+    stdio.ts                   entrypoint: loadConfig(workspace) -> createDesignSystem -> serveStdio
+  index.ts                     public exports
+```
+
+Adding another styling system (Sass modules, styled-components) is a new file next to
+`styles/vanilla-extract.ts` plus one branch in `styles-adapter.ts` — no concrete implementation
+gets touched to add another, and neither does `validate.ts` or `tsx-adapter.ts`, which only ever
+call the dispatcher. Same shape for another className convention next to `classnames/tailwind.ts`,
+and for another component format next to `components/react-tsx.ts`.
+
+**Why the TSX adapter delegates instead of checking styles/classes itself.** An inline JSX
+`style={{...}}` prop needs the _exact_ same governed-property check as a style-authoring call —
+same properties, same token groups, same reverse index — so both run through the shared
+`check-style-object.ts` rather than keeping a second copy of that logic. Utility-class checking is
+unrelated (it's regex over strings, not object literals), so it's the className adapter's own
+concern, reached through its dispatcher. `validate.ts` itself calls exactly two things —
+`validateStyles` and `validateJsx` — because there are only two places in a file token violations
+start from: a style-defining call, or a JSX element.
+
+**Why `styles`/`classNames` are opt-in config.** Earlier this ran the vanilla-extract and Tailwind
+checks unconditionally, which quietly contradicted the "nothing hardcoded" premise by assuming
+every project uses both. Now each check takes its config field and does nothing when it's absent,
+the same way a token check does nothing for a group with no tokens: no signal, no finding.
+
+**Why property→group is a map, not value-matching.** Detecting a violation is structural — is this
+governed property set to a literal, or to a reference into the token object? — rather than based
+on whether the literal happens to match some token's value. `padding: '8px'` is wrong even when
+8px equals a real token today, because it won't track that token if it changes. Value-matching is
+used only to compute `suggestion`, once a violation is already established.
+
+**Why the group list isn't fixed.** A real design system's token groups aren't knowable in advance
+(some have `shadow`/`motion`, plenty don't; some split typography into `fontSize`/`fontWeight`/
+`lineHeight` rather than one `typography` group), so a rule fires only when the configured token
+source actually has tokens in that group.
+
+**Why `width`/`height` aren't governed properties.** They're too overloaded — an icon's size and a
+card's layout width use the same CSS property — to map onto one token group without a high
+false-positive rate, so they're left unchecked.
+
+**Why token sources aren't merged by name.** If a design system splits token _shape_ (a
+vanilla-extract contract) from token _values_ (a separate JSON file), those two sources produce
+separate token entries rather than one merged entry. Whoever writes the config decides which files
+to list; there's no cross-file name-matching to get wrong.
+
 ## Setup
 
 Node `^22.18.0` or `>=24.11.0` (pinned in `.nvmrc`).
@@ -112,7 +339,7 @@ and its own checks. The ones that ship:
   (`react-docgen-typescript`, the same tool Storybook's autodocs use), which is what lets a variant
   prop typed as `keyof typeof someTokenObject` resolve to its actual allowed values rather than
   only a union written out literally. Also reads each component's colocated `.stories` file and its
-  `@invalidAlternative` JSDoc tag (see below). Fields: `include` (glob pattern(s)), `tsconfig` (path
+  `@invalidAlternative` JSDoc tag (see above). Fields: `include` (glob pattern(s)), `tsconfig` (path
   to a tsconfig, needed to resolve path aliases like a monorepo's `@app/*`).
 - `npm-package` — reads an installed package's components from its type declarations, so an icon
   library or a set of headless primitives becomes part of the queryable inventory rather than
@@ -126,230 +353,6 @@ and its own checks. The ones that ship:
 
 A format that isn't listed here needs a new adapter — one file plus one branch, see
 [Architecture](#architecture).
-
-## Tools
-
-| Tool                | Purpose                                                                                                                                                                                  |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `list_tokens`       | List tokens, optionally filtered to one group. Call with no group first — group names vary by project (`color`, `spacing`, `iconSize`, `zIndex`, whatever the source defines).           |
-| `list_components`   | The component inventory: name, description, category, and which props are variant-like.                                                                                                  |
-| `search_tokens`     | Ranked token search across names, groups, references and values — for when you know what you want but not what this system calls it.                                                     |
-| `search_components` | Ranked component search across names, descriptions, categories and prop names — the first call to make before building any UI element from scratch.                                      |
-| `get_component`     | One component's full contract: every prop with its type and required flag, and the allowed value set for each variant-like prop. An unknown name comes back with the closest real names. |
-| `validate`          | Check a JSX/TSX snippet or a style file's content. Unparseable input comes back as a finding.                                                                                            |
-
-### What `validate` checks
-
-Each finding names the exact constraint broken and, where derivable, the exact fix.
-
-**Values that should be tokens**
-
-1. **Hardcoded literals in style-defining code** — for `vanilla-extract`, that's `style()` and
-   `styleVariants()` (from `@vanilla-extract/css`) and `recipe()` (from the separate
-   `@vanilla-extract/recipes` package), including everything nested inside `selectors`,
-   media-query and variant objects, quoted pseudo-selector keys included. In a system that splits
-   styling between a CSS-in-TS library and utility classes, this is where most real token
-   violations live.
-2. **Hardcoded literals in JSX** — an inline `style={{...}}` prop, and utility-class arbitrary
-   values (`text-[#1e1e22]`, `p-[13px]` under `tailwind`), which step outside the design system's
-   scale by construction.
-
-The `suggestion` on these comes from a value-to-token reverse index built at load time: nearest
-color for a hex value, nearest numeric token for spacing, radius and the like — the fix an agent
-can apply in one pass.
-
-**Wrong implementations**
-
-3. **Unknown variant value** — a variant-like prop set to a value outside its allowed set, with
-   the allowed set named in the message.
-4. **An invalid alternative to a design system component** — reaching for a raw `<button>`, or for
-   some other library's `MuiButton`, when the system has a `Button` of its own. A component
-   declares what it supersedes with an `@invalidAlternative` JSDoc tag, naming native elements and
-   components alike:
-
-   ```tsx
-   /**
-    * Primary interactive control for triggering an action.
-    * @invalidAlternative button, MuiButton
-    */
-   export function Button(props: ButtonProps) {
-     /* ... */
-   }
-   ```
-
-   Declarations use CSS selector syntax, so a component can name a tag _and the classes on it_ —
-   which is how a layout primitive says "a plain div is fine, a div doing my job is not":
-
-   | Declaration      | Matches                             |
-   | ---------------- | ----------------------------------- |
-   | `button`         | any `<button>`                      |
-   | `MuiButton`      | another library's component         |
-   | `div.flex`       | a `<div>` carrying the class `flex` |
-   | `div.flex.gap-2` | a `<div>` carrying both classes     |
-   | `.flex`          | any element carrying `flex`         |
-
-   All the classes named must be present; extras are ignored, so `div.flex` matches
-   `className="flex items-center"`. The classes are plain literals you wrote — this is unrelated
-   to `classNames`, and works whether or not you configure a utility-class convention.
-
-   Any way of writing the value is read, including through a helper — `cn`, `clsx`, `classNames`,
-   `twMerge` or your own, since the name of the call is never inspected:
-
-   ```tsx
-   <div className="flex items-center" />
-   <div className={cn('flex', isActive && 'gap-2')} />
-   <div className={clsx({ flex: isRow })} />   // class as key
-   <div className={`flex ${extra}`} />
-   ```
-
-   Where two declarations both match, the more specific one wins, so `div.flex` is reported over
-   a bare `div`. An invalid alternative is always an error.
-
-**Superseded implementations**
-
-5. **A deprecated usage pattern** — a usage reproducing a prop combination the component's own
-   `.stories` file marks deprecated, either by an `@deprecated` docblock or a story name saying so.
-   The finding names the story, so the reader can go see what replaced it. A warning, not an error.
-
-## Worked example: before / after
-
-[`examples/synthetic-design-system/`](examples/synthetic-design-system/) is a small, fully public
-design system (fictional tokens, one `Button` with stories) demonstrating the CSS-in-TS + utility
-class split this MCP was built around — run it from inside there (`cd
-examples/synthetic-design-system && node ../../dist/mcp/stdio.js`) to try this yourself.
-
-An agent about to write `Button.css.ts` hardcodes a color instead of looking it up:
-
-```ts
-// before — an agent invented a hex value
-import { style } from '@vanilla-extract/css';
-export const bad = style({ color: '#3b5bdb' });
-```
-
-```jsonc
-// validate({ "code": "..." }) response
-{
-  "ok": false,
-  "findings": [
-    {
-      "rule": "hardcoded-literal",
-      "severity": "error",
-      "surface": "vanilla-extract",
-      "line": 2,
-      "column": 35,
-      "message": "\"color: #3b5bdb\" hardcodes a color value instead of using a design token. The closest token is \"color.accent\".",
-      "suggestion": "vars.color.accent",
-    },
-  ],
-}
-```
-
-The agent applies the suggestion directly:
-
-```ts
-// after
-import { style } from '@vanilla-extract/css';
-import { vars } from '../theme.css';
-export const good = style({ color: vars.color.accent });
-```
-
-```jsonc
-// validate(...) response
-{ "ok": true, "findings": [] }
-```
-
-## Architecture
-
-The design system model has no MCP dependency — everything under [`src/model/`](src/model/)
-(config loading, adapters, `validate`) is plain TypeScript that knows nothing about the protocol;
-[`src/mcp/`](src/mcp/) is a thin layer that registers tools, calls the model, and formats the
-result. That split is deliberate: the model is meant to be reusable by something other than an MCP
-server later (a CLI, a lint rule), and a tool handler containing logic beyond formatting would be
-a bug rather than a feature.
-
-Exactly three adapters — `tsx-adapter`, `styles-adapter`, `classname-adapter` — one per concern.
-All three are dispatchers: they contain no library-specific code of their own, only routing to
-whichever implementation `config.source` names, so no particular styling system or component
-format is baked into the thing that's supposed to be generic.
-
-```
-src/
-  model/
-    types.ts                  DesignSystem, ComponentContract, DesignToken, Finding
-    config.ts                 Zod schema + loadConfig(cwd) -> ResolvedConfig
-    design-system.ts          createDesignSystem(config) -> DesignSystem: loads every configured
-                               token and component source, builds the reverse index, and holds
-                               the lookup/search API
-    validate.ts               parses once with Babel, calls the two "validate" entry points below
-    reverse-index.ts          value -> nearest-token lookup (color distance / numeric proximity)
-    flatten-object-literal.ts shared AST helper both token-reading implementations use
-    check-style-object.ts     shared property-group check every styling implementation, and the
-                               TSX adapter's inline style prop, run an object literal through
-    class-name-strings.ts     reads the classes off a JSX className, whatever expression shape
-                               it takes — knows no className convention
-    adapters/
-      styles-adapter.ts        DISPATCHER — loadTokens(config) and validateStyles(ast, system,
-                                config) each pick a branch on config.source and call into it
-      styles/
-        vanilla-extract.ts      loadTokens() (createThemeContract/createGlobalTheme) and
-                                validate() (style()/styleVariants()/recipe() calls)
-        object.ts               loadTokens() for a plain JS/JSON file
-      classname-adapter.ts      DISPATCHER — check(config, value) picks a branch on config.source
-      classnames/
-        tailwind.ts             check() for arbitrary-value brackets
-      tsx-adapter.ts            DISPATCHER for loadComponents(config), plus validateJsx(ast,
-                                system, classNamesConfig): walks JSX elements, checks variant
-                                props, invalid alternatives and story-derived patterns itself, and
-                                delegates style/className checks to its two sibling adapters
-      components/
-        react-tsx.ts            component contracts from project source files
-        npm-package.ts          component contracts from an installed package's type declarations
-        stories.ts              deprecated prop patterns from a colocated .stories file
-  mcp/
-    server.ts                  tool registration
-    stdio.ts                   entrypoint: loadConfig(workspace) -> createDesignSystem -> serveStdio
-  index.ts                     public exports
-```
-
-Adding another styling system (Sass modules, styled-components) is a new file next to
-`styles/vanilla-extract.ts` plus one branch in `styles-adapter.ts` — no concrete implementation
-gets touched to add another, and neither does `validate.ts` or `tsx-adapter.ts`, which only ever
-call the dispatcher. Same shape for another className convention next to `classnames/tailwind.ts`,
-and for another component format next to `components/react-tsx.ts`.
-
-**Why the TSX adapter delegates instead of checking styles/classes itself.** An inline JSX
-`style={{...}}` prop needs the _exact_ same governed-property check as a style-authoring call —
-same properties, same token groups, same reverse index — so both run through the shared
-`check-style-object.ts` rather than keeping a second copy of that logic. Utility-class checking is
-unrelated (it's regex over strings, not object literals), so it's the className adapter's own
-concern, reached through its dispatcher. `validate.ts` itself calls exactly two things —
-`validateStyles` and `validateJsx` — because there are only two places in a file token violations
-start from: a style-defining call, or a JSX element.
-
-**Why `styles`/`classNames` are opt-in config.** Earlier this ran the vanilla-extract and Tailwind
-checks unconditionally, which quietly contradicted the "nothing hardcoded" premise by assuming
-every project uses both. Now each check takes its config field and does nothing when it's absent,
-the same way a token check does nothing for a group with no tokens: no signal, no finding.
-
-**Why property→group is a map, not value-matching.** Detecting a violation is structural — is this
-governed property set to a literal, or to a reference into the token object? — rather than based
-on whether the literal happens to match some token's value. `padding: '8px'` is wrong even when
-8px equals a real token today, because it won't track that token if it changes. Value-matching is
-used only to compute `suggestion`, once a violation is already established.
-
-**Why the group list isn't fixed.** A real design system's token groups aren't knowable in advance
-(some have `shadow`/`motion`, plenty don't; some split typography into `fontSize`/`fontWeight`/
-`lineHeight` rather than one `typography` group), so a rule fires only when the configured token
-source actually has tokens in that group.
-
-**Why `width`/`height` aren't governed properties.** They're too overloaded — an icon's size and a
-card's layout width use the same CSS property — to map onto one token group without a high
-false-positive rate, so they're left unchecked.
-
-**Why token sources aren't merged by name.** If a design system splits token _shape_ (a
-vanilla-extract contract) from token _values_ (a separate JSON file), those two sources produce
-separate token entries rather than one merged entry. Whoever writes the config decides which files
-to list; there's no cross-file name-matching to get wrong.
 
 ## Known limitations
 
