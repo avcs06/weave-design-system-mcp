@@ -31,15 +31,6 @@ const ConfigSchema = z.object({
    * shouldn't get findings invented for one.
    */
   classNames: SourceConfigSchema.optional(),
-  /**
-   * Whether to ask the connected client's model which native element each
-   * component stands in for, for the components that don't declare it
-   * themselves with an `@invalidAlternative` tag. Off unless asked for: it spends one
-   * model call per undeclared component on every connect — billed to
-   * whoever runs the client — to produce warnings. Declared
-   * `@invalidAlternative` tags are unaffected either way.
-   */
-  inferInvalidAlternatives: z.boolean().optional(),
 });
 
 export type SourceConfig = z.infer<typeof SourceConfigSchema>;
@@ -49,8 +40,6 @@ export interface ResolvedConfig {
   components: SourceConfig[];
   styles?: SourceConfig;
   classNames?: SourceConfig;
-  /** Defaults to `false` — see the schema above for why it isn't on by default. */
-  inferInvalidAlternatives?: boolean;
   /** Directory the config file lives in — adapters that treat a field as a filesystem path resolve relative to this, not to `process.cwd()`. */
   configDir: string;
 }
@@ -95,13 +84,12 @@ export function loadConfig(cwd: string = process.cwd()): ResolvedConfig {
     throw new Error(`${configPath} is invalid:\n${formatZodError(result.error)}`);
   }
 
-  const { tokens, components, styles, classNames, inferInvalidAlternatives } = result.data;
+  const { tokens, components, styles, classNames } = result.data;
   return {
     tokens: Array.isArray(tokens) ? tokens : [tokens],
     components: Array.isArray(components) ? components : [components],
     styles,
     classNames,
-    inferInvalidAlternatives: inferInvalidAlternatives ?? false,
     configDir: resolve(dirname(configPath)),
   };
 }

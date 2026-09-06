@@ -72,13 +72,6 @@ export interface ComponentContract {
    * design system has this component for exactly that job.
    */
   invalidAlternatives: string[];
-  /**
-   * Same idea, but *guessed* by a model rather than declared (see
-   * `DesignSystem.inferInvalidAlternatives`). Kept separate from
-   * `invalidAlternatives` precisely because a guess must not carry a
-   * declaration's authority: it produces a warning, never an error.
-   */
-  inferredInvalidAlternatives?: string[];
   /** Deprecated prop combinations read from the component's colocated `.stories` file. */
   deprecatedPatterns: DeprecatedUsagePattern[];
   /**
@@ -138,16 +131,5 @@ export interface DesignSystem {
   searchTokens(query: string, limit?: number): SearchHit[];
   /** Ranked component search across name, description, category and prop names — for "is there a component for X?" */
   searchComponents(query: string, limit?: number): SearchHit[];
-  /**
-   * Best-effort enrichment, and a no-op unless the config opts in with
-   * `inferInvalidAlternatives`: for every component that does *not* declare
-   * `@invalidAlternative`, asks `suggest` which native element it stands in
-   * for and
-   * records the answer as `inferredInvalidAlternatives`. Takes a plain
-   * function so this layer stays free of any MCP dependency — the server
-   * passes one backed by client sampling. A component whose suggestion
-   * fails is left un-enriched rather than failing the pass.
-   */
-  inferInvalidAlternatives(suggest: (component: ComponentContract) => Promise<string[]>): Promise<void>;
   validate(code: string, filename?: string): ValidateResult;
 }

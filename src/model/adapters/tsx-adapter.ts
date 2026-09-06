@@ -173,8 +173,6 @@ interface AlternativeMatcher {
   source: string;
   /** The design system component that supersedes this. */
   owner: string;
-  /** Declared by the component itself, rather than inferred by a model. */
-  declared: boolean;
 }
 
 /** Invalid alternatives indexed for lookup, built once per design system. */
@@ -222,7 +220,7 @@ function splitOutsideBrackets(text: string, separator: string): string[] {
  * cares about a utility-class convention, and matching works whether or not
  * `classNames` is configured.
  */
-function parseAlternative(source: string, owner: string, declared: boolean): AlternativeMatcher | undefined {
+function parseAlternative(source: string, owner: string): AlternativeMatcher | undefined {
   const text = source.trim().replace(/[<>]/g, '');
   if (!text) return undefined;
 
@@ -233,7 +231,7 @@ function parseAlternative(source: string, owner: string, declared: boolean): Alt
   const classNames = rawClasses.map((c) => c.trim()).filter(Boolean);
 
   if (!tag && classNames.length === 0) return undefined;
-  return { tag: tag?.toLowerCase(), classNames, source: text, owner, declared };
+  return { tag: tag?.toLowerCase(), classNames, source: text, owner };
 }
 
 /** How a matcher reads back in a message: `<button>`, or `<div className="flex">`. */
@@ -259,22 +257,14 @@ function addMatcher(owners: InvalidAlternativeOwners, matcher: AlternativeMatche
  * that name that tag, however many components declare however many
  * alternatives.
  *
- * Built once per design system rather than per `validate` call — see
- * `design-system.ts`, which rebuilds it when inference mutates the
- * contracts.
+ * Built once per design system rather than per `validate` call.
  */
 export function buildInvalidAlternativeOwners(components: ComponentContract[]): InvalidAlternativeOwners {
   const owners: InvalidAlternativeOwners = { byTag: new Map(), anyTag: [] };
 
   for (const component of components) {
     for (const source of component.invalidAlternatives) {
-      const matcher = parseAlternative(source, component.name, true);
-      if (matcher) addMatcher(owners, matcher);
-    }
-  }
-  for (const component of components) {
-    for (const source of component.inferredInvalidAlternatives ?? []) {
-      const matcher = parseAlternative(source, component.name, false);
+      const matcher = parseAlternative(source, component.name);
       if (matcher) addMatcher(owners, matcher);
     }
   }
@@ -284,9 +274,7 @@ export function buildInvalidAlternativeOwners(components: ComponentContract[]): 
 
 /**
  * The best matcher for an element, or `undefined`. "Best" is the most
- * authoritative and then the most specific: a declaration outranks a model's
- * guess so an inference can never downgrade one to a warning, and among
- * equals the matcher naming more classes wins, so `div.flex` beats a bare
+ * specific: the matcher naming more classes wins, so `div.flex` beats a bare
  * `div` and the reader is pointed at the closer-fitting component.
  */
 function bestMatch(
@@ -303,11 +291,7 @@ function bestMatch(
     if (matcher.owner === tag) continue;
     if (matcher.classNames.some((name) => !classes?.has(name))) continue;
 
-    if (
-      !best ||
-      (matcher.declared && !best.declared) ||
-      (matcher.declared === best.declared && matcher.classNames.length > best.classNames.length)
-    ) {
+    if (!best || matcher.classNames.length > best.classNames.length) {
       best = matcher;
     }
   }
@@ -318,9 +302,8 @@ function bestMatch(
  * Reaching for a raw `<button>`, a `<div className="flex">`, or some other
  * library's Button, when the design system has a component for exactly that
  * is the "wrong implementation" case — the component exists precisely so
- * this doesn't happen. A *declared* invalid alternative is an error; one a
- * model only inferred is a warning, because a guess should never block on
- * its own authority.
+ * this doesn't happen. Always an error: the component declares this an
+ * invalid alternative to itself.
  */
 function checkInvalidAlternative(
   node: JSXOpeningElement,
@@ -337,12 +320,10 @@ function checkInvalidAlternative(
   return [
     {
       rule: 'invalid-alternative',
-      severity: match.declared ? 'error' : 'warning',
+      severity: 'error',
       surface: 'jsx',
       ...position(node),
-      message: match.declared
-        ? `Use the ${match.owner} component instead of ${used} — ${match.owner} declares ${match.source} an invalid alternative to itself.`
-        : `${used} may be better written as the ${match.owner} component. This one is inferred, not declared — confirm before changing it.`,
+      message: `Use the ${match.owner} component instead of ${used} — ${match.owner} declares ${match.source} an invalid alternative to itself.`,
       suggestion: match.owner,
     },
   ];

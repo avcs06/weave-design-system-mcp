@@ -85,13 +85,12 @@ doesn't match its layout.
 
 `tokens` and `components` take either one source object or an array of them.
 
-| Field                      | Purpose                                                                                                                                                                                                                                                  |
-| -------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `tokens`                   | Where the design tokens are. Tokens can be spread across several files or formats — list each one and they're concatenated.                                                                                                                              |
-| `components`               | Where the components are: your workspace's own source files, published packages, or both.                                                                                                                                                                |
-| `styles`                   | _Optional._ Which styling system `validate` should check style-defining code with. Omit it and no style check runs — it isn't assumed from `tokens`, since a project can read token values from one place and author styles in another.                  |
-| `classNames`               | _Optional._ Which utility-class convention `validate` should check `className` with. Omit it and `className` isn't inspected.                                                                                                                            |
-| `inferInvalidAlternatives` | _Optional, defaults to `false`._ Ask the client's model which native element each component stands in for, for components that don't declare it themselves. Costs one model call per such component on every connect, billed to whoever runs the client. |
+| Field        | Purpose                                                                                                                                                                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `tokens`     | Where the design tokens are. Tokens can be spread across several files or formats — list each one and they're concatenated.                                                                                                             |
+| `components` | Where the components are: your workspace's own source files, published packages, or both.                                                                                                                                               |
+| `styles`     | _Optional._ Which styling system `validate` should check style-defining code with. Omit it and no style check runs — it isn't assumed from `tokens`, since a project can read token values from one place and author styles in another. |
+| `classNames` | _Optional._ Which utility-class convention `validate` should check `className` with. Omit it and `className` isn't inspected.                                                                                                           |
 
 Each `source` names an implementation, and each implementation defines its own remaining fields
 and its own checks. The ones that ship:
@@ -204,18 +203,7 @@ can apply in one pass.
    ```
 
    Where two declarations both match, the more specific one wins, so `div.flex` is reported over
-   a bare `div`.
-
-   A declared invalid alternative is an error. The same relationship can also be _inferred_ for
-   components that declare nothing, by asking the connected client's model once per component at
-   startup
-   ([MCP sampling](https://modelcontextprotocol.io/docs/concepts/sampling)) — an inferred one is
-   only a warning, since a guess shouldn't carry a declaration's authority.
-
-   Inference is off unless `inferInvalidAlternatives` turns it on, because those calls run on the
-   client's model and are billed to whoever runs it. Turning it on is a good way to find
-   candidates worth promoting to a real `@invalidAlternative` tag, which then costs nothing and
-   upgrades the finding to an error. Declared tags never depend on any of this.
+   a bare `div`. An invalid alternative is always an error.
 
 **Superseded implementations**
 
@@ -322,7 +310,6 @@ src/
         stories.ts              deprecated and documented prop shapes from a colocated .stories file
   mcp/
     server.ts                  tool registration
-    sampling.ts                asks the client's model what a component is an alternative to
     stdio.ts                   entrypoint: loadConfig(workspace) -> createDesignSystem -> serveStdio
   index.ts                     public exports
 ```
@@ -381,16 +368,6 @@ to list; there's no cross-file name-matching to get wrong.
   zero components — which looks like a config problem when it's an install problem.
 - **Scanning a large package with `names: "*"` is slow.** A full icon library (~3,400 components)
   takes several seconds at startup. Naming the specific components you use keeps it instant.
-- **Inferred invalid alternatives are off by default and need a client that supports sampling.**
-  Sampling was deprecated (not removed) under SEP-2577 as of the 2026-07-28 protocol revision,
-  alongside roots and logging; the feature lifecycle policy keeps it in the spec for at least
-  twelve months after that before it's even eligible for removal, but new implementations are
-  advised not to adopt it. What changed with that revision is the mechanism: the server-initiated
-  `sampling/createMessage` request this relies on is superseded by Multi Round-Trip Requests
-  (SEP-2322), where a server handler signals it needs input rather than pushing a request to the
-  client. Sampling also requires stdio or stateful mode — a stateless server can't send requests to
-  clients at all, so it's unavailable there by construction. Where it's unavailable the inference is
-  skipped; `@invalidAlternative` declarations are unaffected and keep working.
 - **`@modelcontextprotocol/server` v2** (this depends on it per the SDK's own migration guidance
   away from v1's `@modelcontextprotocol/sdk`) reached `2.0.0` a few weeks before this was written.
   It's maintained by the official MCP org, but has far less real-world mileage than the v1 SDK.

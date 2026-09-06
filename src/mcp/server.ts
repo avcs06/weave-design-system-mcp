@@ -4,7 +4,6 @@ import { McpServer } from '@modelcontextprotocol/server';
 import * as z from 'zod/v4';
 
 import type { DesignSystem } from '../model/types.js';
-import { createInvalidAlternativeSuggester } from './sampling.js';
 
 export const SERVER_NAME = 'weave-design-system-mcp';
 
@@ -165,15 +164,6 @@ export function createServer(system: DesignSystem): McpServer {
     },
     async ({ code, filename }) => json(system.validate(code, filename)),
   );
-
-  // Invalid-alternative inference needs the client's declared capabilities, so
-  // it can only start once the handshake is done. It enriches the shared
-  // contracts in place and is entirely optional — `validate` stays fully
-  // useful on a client that offers no sampling, it just won't warn about
-  // tags no component *declared* an invalid alternative to itself.
-  server.server.oninitialized = () => {
-    void system.inferInvalidAlternatives(createInvalidAlternativeSuggester(server));
-  };
 
   return server;
 }

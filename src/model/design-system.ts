@@ -22,11 +22,6 @@ function levenshtein(a: string, b: string): number {
   return dp[rows - 1]![cols - 1]!;
 }
 
-/** How many invalid-alternative questions may be in flight at once (see `inferInvalidAlternatives`). */
-const INFERENCE_CONCURRENCY = 4;
-/** Give up on inference entirely after this many consecutive failures — the client evidently can't answer. */
-const MAX_CONSECUTIVE_INFERENCE_FAILURES = 3;
-
 function loadAllTokens(config: ResolvedConfig): DesignToken[] {
   return config.tokens.flatMap((sourceConfig) =>
     loadTokens({ ...sourceConfig, configDir: config.configDir }),
@@ -74,9 +69,7 @@ export function createDesignSystem(config: ResolvedConfig): DesignSystem {
   // A component source can be an entire icon package, so `component()` gets
   // a map rather than a linear scan — `validate` looks up a name per JSX tag.
   const byName = new Map(components.map((c) => [c.name.toLowerCase(), c]));
-  // Built once rather than per `validate` call. Only inference changes what
-  // goes into it, and that rebuilds it below.
-  let invalidAlternatives = buildInvalidAlternativeOwners(components);
+  const invalidAlternatives = buildInvalidAlternativeOwners(components);
 
   const system: DesignSystem = {
     tokens(group) {
@@ -141,41 +134,6 @@ export function createDesignSystem(config: ResolvedConfig): DesignSystem {
         })),
         limit,
       );
-    },
-
-    async inferInvalidAlternatives(suggest) {
-      // Opt-in: each `suggest` is a model call charged to whoever runs the
-      // client, so a project that didn't ask for this must not pay for it.
-      // Returning before the first call is the point — filtering the results
-      // afterwards would already have spent the money.
-      if (!config.inferInvalidAlternatives) return;
-
-      // Only components that declare nothing themselves — a declaration is
-      // authoritative and must never be second-guessed by a model.
-      const queue = components.filter((c) => c.invalidAlternatives.length === 0);
-      let next = 0;
-      let consecutiveFailures = 0;
-
-      // Bounded concurrency, not `Promise.all` over the whole set: a design
-      // system of a few hundred components would otherwise fire a few hundred
-      // simultaneous requests at the client the instant it connects. And a
-      // run of consecutive failures means the client can't answer these at
-      // all, so stop asking rather than working through the whole list.
-      const worker = async (): Promise<void> => {
-        while (next < queue.length && consecutiveFailures < MAX_CONSECUTIVE_INFERENCE_FAILURES) {
-          const component = queue[next++]!;
-          try {
-            const tags = await suggest(component);
-            consecutiveFailures = 0;
-            if (tags.length > 0) component.inferredInvalidAlternatives = tags;
-          } catch {
-            consecutiveFailures++;
-          }
-        }
-      };
-
-      await Promise.all(Array.from({ length: Math.min(INFERENCE_CONCURRENCY, queue.length) }, worker));
-      invalidAlternatives = buildInvalidAlternativeOwners(components);
     },
 
     validate(code, filename) {

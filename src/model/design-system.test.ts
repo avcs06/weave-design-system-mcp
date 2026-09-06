@@ -307,15 +307,6 @@ describe('validate — invalid alternatives (wrong implementation)', () => {
     });
   });
 
-  function systemForInference(inferInvalidAlternatives?: boolean) {
-    return createDesignSystem({
-      tokens: [{ source: 'object', path: 'tokens.ts', configDir: EXAMPLE }],
-      components: [{ source: 'react-tsx', include: ['components/**/*.tsx'], configDir: EXAMPLE }],
-      inferInvalidAlternatives,
-      configDir: EXAMPLE,
-    });
-  }
-
   it('flags a tag+class combination, and leaves the same tag without that class alone', () => {
     // Flex declares `div.flex`: a bare <div> is fine, a <div className="flex"> is not.
     expect(system.validate('<div />')).toEqual({ ok: true, findings: [] });
@@ -356,51 +347,6 @@ describe('validate — invalid alternatives (wrong implementation)', () => {
       ok: true,
       findings: [],
     });
-  });
-
-  it('asks the model nothing at all unless the config opts in — each call would cost the user', async () => {
-    const off = systemForInference();
-    let calls = 0;
-    await off.inferInvalidAlternatives(async () => {
-      calls++;
-      return ['div'];
-    });
-    expect(calls).toBe(0);
-    expect(off.component('Stack')?.inferredInvalidAlternatives).toBeUndefined();
-  });
-
-  it('infers only for components that declare nothing, once opted in', async () => {
-    const on = systemForInference(true);
-    const asked: string[] = [];
-    await on.inferInvalidAlternatives(async (component) => {
-      asked.push(component.name);
-      return ['div'];
-    });
-    // Button declares `button`; a declaration is authoritative and must never
-    // be re-asked, let alone overwritten, by a model.
-    expect(asked).toEqual(['Stack']);
-    expect(on.component('Button')?.inferredInvalidAlternatives).toBeUndefined();
-    expect(on.component('Stack')?.inferredInvalidAlternatives).toEqual(['div']);
-  });
-
-  it('reports an inferred alternative as a warning, while a declared one stays an error', async () => {
-    const on = systemForInference(true);
-    await on.inferInvalidAlternatives(async () => ['div']);
-
-    expect(on.validate('<div />').findings[0]).toMatchObject({
-      rule: 'invalid-alternative',
-      severity: 'warning',
-      suggestion: 'Stack',
-    });
-    expect(on.validate('<button />').findings[0]?.severity).toBe('error');
-  });
-
-  it('survives a suggester that throws', async () => {
-    await expect(
-      systemForInference(true).inferInvalidAlternatives(async () => {
-        throw new Error('client said no');
-      }),
-    ).resolves.toBeUndefined();
   });
 });
 
