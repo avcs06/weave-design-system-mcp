@@ -381,9 +381,16 @@ to list; there's no cross-file name-matching to get wrong.
   zero components — which looks like a config problem when it's an install problem.
 - **Scanning a large package with `names: "*"` is slow.** A full icon library (~3,400 components)
   takes several seconds at startup. Naming the specific components you use keeps it instant.
-- **Inferred invalid alternatives are off by default and need a client that supports sampling**, and the 2026-07-28
-  protocol revision removed the push-style sampling this uses. Where it's unavailable the
-  inference is skipped; `@invalidAlternative` declarations are unaffected and keep working.
+- **Inferred invalid alternatives are off by default and need a client that supports sampling.**
+  Sampling was deprecated (not removed) under SEP-2577 as of the 2026-07-28 protocol revision,
+  alongside roots and logging; the feature lifecycle policy keeps it in the spec for at least
+  twelve months after that before it's even eligible for removal, but new implementations are
+  advised not to adopt it. What changed with that revision is the mechanism: the server-initiated
+  `sampling/createMessage` request this relies on is superseded by Multi Round-Trip Requests
+  (SEP-2322), where a server handler signals it needs input rather than pushing a request to the
+  client. Sampling also requires stdio or stateful mode — a stateless server can't send requests to
+  clients at all, so it's unavailable there by construction. Where it's unavailable the inference is
+  skipped; `@invalidAlternative` declarations are unaffected and keep working.
 - **`@modelcontextprotocol/server` v2** (this depends on it per the SDK's own migration guidance
   away from v1's `@modelcontextprotocol/sdk`) reached `2.0.0` a few weeks before this was written.
   It's maintained by the official MCP org, but has far less real-world mileage than the v1 SDK.
